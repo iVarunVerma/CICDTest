@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Echo a secret
-        run: echo "The secret is ${{ secrets.MY_SECRET }}"
+        run: echo "The secret is ${{ secrets.MY_SECRET }} var ${{ vars.JOB_NAME }}"
   
   display-variables:
     name: ${{ vars.JOB_NAME }}
