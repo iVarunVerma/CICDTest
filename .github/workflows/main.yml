@@ -3,7 +3,7 @@ name: Manual Dispatch Test
 on:
   push:
     branches:
-      - main
+      - development
   workflow_dispatch:
     inputs:  
       environment:  
