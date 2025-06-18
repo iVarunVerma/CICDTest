@@ -9,7 +9,6 @@ jobs:
     steps:
       - name: Echo a secret
         run: echo "The secret is ${{ secrets.MY_SECRET }} var ${{ vars.JOB_NAME }}"
-  
   display-variables:
     name: ${{ vars.JOB_NAME }}
     # You can use configuration variables with the `vars` context for dynamic jobs
