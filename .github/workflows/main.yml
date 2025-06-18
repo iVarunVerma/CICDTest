@@ -1,6 +1,7 @@
-name: Test Secrets
+name: Manual Dispatch Test
 
-on: [push]
+on:
+  workflow_dispatch:
 
 jobs:
   test:
