@@ -40,7 +40,9 @@ jobs:
         run: echo "$GITHUB_CONTEXT"
         
       - name: Echo a secret
-        run: echo "The secret is ${{ secrets.APIKEY }}"
+        env:
+          APIKey: ${{secrets.APIKEY}}
+        run: echo "The secret is ${{ vars.APIKEY }}"
 
       - name: Echo a vars
         run: echo "The vars is ${{ vars.APIURL }}"
