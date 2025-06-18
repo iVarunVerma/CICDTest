@@ -1,6 +1,9 @@
 name: Manual Dispatch Test
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:  
       environment:  
