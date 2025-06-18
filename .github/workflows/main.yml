@@ -25,7 +25,12 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name }}
     steps:
+      - name: Github Context
+        run: "Github event name ${{ github.event_name }} and ${{ github.event.inputs.environment }} and $ {{ github.ref_name }}"
+      
       - name: Echo a secret
         run: echo "The secret is ${{ secrets.MY_SECRET }}"
       
