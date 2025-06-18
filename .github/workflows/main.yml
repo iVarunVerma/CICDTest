@@ -42,7 +42,8 @@ jobs:
       - name: Echo a secret
         env:
           APIKey: ${{secrets.APIKEY}}
-        run: echo "The secret is $APIKEY"
+        run: echo "The local var is $APIKEY"
+        run: echo "The secret is ${{ secrets.APIKEY }}"
 
       - name: Echo a vars
         run: echo "The vars is ${{ vars.APIURL }}"
