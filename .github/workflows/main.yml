@@ -29,11 +29,9 @@ jobs:
       name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name }}
     steps:
       - name: Github Context
-        env:
-          GITHUB_CONTEXT: ${{ toJson(github) }}
         run: echo "Github event name ${{ github.event_name }} and ${{ github.event.inputs.environment }} and ${{ github.ref_name }}"
-        run: echo "$GITHUB_CONTEXT"
-      
+        run: echo "Second run"
+
       - name: Echo a secret
         run: echo "The secret is ${{ secrets.MY_SECRET }}"
       
