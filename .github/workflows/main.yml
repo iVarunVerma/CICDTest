@@ -2,6 +2,25 @@ name: Manual Dispatch Test
 
 on:
   workflow_dispatch:
+    inputs:  
+      environment:  
+        type: environment  
+        description: 'Environment to use'  
+        default: 'development'  
+        required: true  
+      branch:  
+        type: choice  
+        description: 'Branch to use'  
+        required: true  
+        default: 'staging'  
+        options:
+          - development  
+          - staging  
+          - main  
+      branch_override:  
+        type: string  
+        description: 'option to deploy a specific tag, branch, or feature'
+        default: ''
 
 jobs:
   test:
