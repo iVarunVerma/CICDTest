@@ -43,7 +43,7 @@ jobs:
         env:
           APIKey: ${{secrets.APIKEY}}
         run: |
-          echo "The local var is $APIKEY"
+          echo "The local var length is ${#APIKEY}"
           echo "The secret is ${{ secrets.APIKEY }}"
 
       - name: Echo a vars
