@@ -42,7 +42,7 @@ jobs:
       - name: Echo a secret
         env:
           APIKey: ${{secrets.APIKEY}}
-        run: echo "The secret is ${{ vars.APIKEY }}"
+        run: echo "The secret is $APIKEY"
 
       - name: Echo a vars
         run: echo "The vars is ${{ vars.APIURL }}"
