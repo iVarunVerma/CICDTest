@@ -3,7 +3,7 @@ name: Manual Dispatch Test
 on:
   push:
     branches:
-      - development
+      - development2
   workflow_dispatch:
     inputs:  
       environment:  
@@ -31,6 +31,9 @@ jobs:
     environment:
       name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name }}
     steps:
+      - name: Branch name
+        run: echo "This exists in main branch"
+      
       - name: Github Context
         run: echo "Github event name ${{ github.event_name }} and ${{ github.event.inputs.environment }} and ${{ github.ref_name }}"
 
