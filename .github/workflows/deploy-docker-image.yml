@@ -27,7 +27,7 @@ on:
 
 jobs:
   DeployProd:
-    name: Deploy to Buzz ${{ github.event.inputs.environment }} by ${{ github.Actor }}
+    name: Deploy to Buzz ${{ env.ENV_NAME }} by ${{ github.Actor }}
     environment:
       name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name }}
     runs-on: ubuntu-latest
