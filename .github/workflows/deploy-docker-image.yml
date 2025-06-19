@@ -1,5 +1,8 @@
 name: Deploy Dashboard Web App to ACR
 
+env:
+  ENV_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name }}
+
 on:
   push:
     branches:
@@ -29,11 +32,10 @@ jobs:
   DeployProd:
     name: Deploy to Buzz ${{ env.ENV_NAME }} by ${{ github.Actor }}
     environment:
-      name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name }}
+      name: ${{ env.ENV_NAME }}
     runs-on: ubuntu-latest
 
     env:
-      ENV_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name }}
       AZURE_REPO: ${{ vars.BUZZ_REPO }}
       AZURE_REGISTRY_HOST: ${{ secrets.BUZZ_ECR_LOGINSERVER }}
       AZURE_REGISTRY_USER: ${{ secrets.BUZZ_ECR_USERNAME }}
