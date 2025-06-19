@@ -1,4 +1,4 @@
-name: Deploy Dashboard Web App to Azure Container Registry
+name: Deploy Dashboard Web App to ACR
 
 on:
   push:
