@@ -56,11 +56,6 @@ jobs:
         with:
           ref: ${{ github.event.inputs.branch_override }}
 
-      - name: Debug - Check Environment Vars
-        run: |
-          echo "DOCKER_ENVIRONMENT  ${{ vars.DOCKER_ENVIRONMENT }}"
-          echo "BUZZ_REPO  ${{ env.AZURE_REPO }}"
-      
       - name: Docker Login to ${{ env.ENV_NAME }}
         if: ${{ !always() }}
         uses: azure/docker-login@v1
