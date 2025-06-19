@@ -3,23 +3,23 @@ name: Deploy Dashboard Web App to ACR
 on:
   push:
     branches:
-      - development
+      - release
   workflow_dispatch:
     inputs:  
       environment:  
         type: environment  
         description: 'Environment to use'  
-        default: 'development'  
+        default: 'develop'  
         required: true  
       branch:  
         type: choice  
         description: 'Branch to use'  
         required: true  
-        default: 'staging'  
+        default: 'develop'  
         options:
-          - development  
+          - develop  
           - staging  
-          - main  
+          - master  
       branch_override:  
         type: string  
         description: 'option to deploy a specific tag, branch, or feature'
@@ -57,7 +57,6 @@ jobs:
           ref: ${{ github.event.inputs.branch_override }}
 
       - name: Docker Login to ${{ env.ENV_NAME }}
-        if: ${{ !always() }}
         uses: azure/docker-login@v1
         with:
           login-server: ${{ env.AZURE_REGISTRY_HOST }}
@@ -65,7 +64,6 @@ jobs:
           password: ${{ env.AZURE_REGISTRY_PW }}
       
       - name: Build the Image and push to Container Registry in ${{ env.ENV_NAME }}
-        if: ${{ !always() }}
         run: |
           docker build --build-arg ENVIRONMENT=${{ vars.DOCKER_ENVIRONMENT }} -t ${{ env.AZURE_REGISTRY_HOST }}/${{ env.AZURE_REPO }}:R${{ github.run_number }} -t ${{ env.AZURE_REGISTRY_HOST }}/${{ env.AZURE_REPO }}:latest .
           docker push ${{ env.AZURE_REGISTRY_HOST }}/${{ env.AZURE_REPO }}:latest
