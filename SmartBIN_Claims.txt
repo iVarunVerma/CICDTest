@@ -1,6 +1,6 @@
 USE [BuzzRxDashboard]
 GO
-/****** Object:  StoredProcedure [ETL].[SmartBINClaim_Export]    Script Date: 6/17/2025 3:14:30 PM ******/
+/****** Object:  StoredProcedure [ETL].[SmartBINClaim_Export]    Script Date: 6/23/2025 9:53:20 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -8,8 +8,12 @@ GO
 
 /*
 
-declare @DateValue Datetime = GETDATE() - 50
+When			What
+17-JUNE-2025	Changed the @EndDate to be the start of next day to include last second of the day (BIA-447)
 
+TEST RUN:
+
+declare @DateValue Datetime = '18-FEB-2025'
 exec [ETL].[SmartBINClaim_Export] @ExportDate = @DateValue, @EnforceLastExec = 0
 
 */
@@ -22,21 +26,12 @@ ALTER PROCEDURE [ETL].[SmartBINClaim_Export]
 AS  
 BEGIN
 	SET NOCOUNT ON
+
+	SET @ExportDate = CAST(@ExportDate AS DATE)
 	
-	IF (@EnforceLastExec = 1)
-	BEGIN
-		SELECT 
-			TOP 1 @ExportDate = CAST([StartTime] AS DATE) FROM [ETL].[ClaimExportDetails] 
-		WHERE 
-			ExportType = 'SmartBIN Claims' and [Status] = 'Completed' 
-		ORDER BY 
-			[StartTime] DESC
-	END
+	DECLARE @EndDate as DATETIME = @ExportDate + 1
 
-	DECLARE @EndDate as DATETIME = cast(GETDATE() as Date)
-	set @EndDate = dateadd(second, -1, @EndDate)
-
-	declare @BasisOfReimbursement table (Id int, Title nvarchar(100))
+	DECLARE @BasisOfReimbursement TABLE (Id INT, Title NVARCHAR(100))
  
 	insert into @BasisOfReimbursement
 	select 0, 'Default' union all
@@ -61,8 +56,8 @@ BEGIN
 	SELECT
 	  CS.ClaimAuthorizationNo AS CLAIM_NUMBER
 	, case CS.[TransactionCode] 
-		when 'B1' then RPS.TotalAmountPaid + RPS.PatientPayAmount 
-		when 'B2' then (RPSB2.TotalAmountPaid + RPSB2.PatientPayAmount) * -1 
+		when 'B1' then RPS.TotalAmountPaid + ISNULL(RPS.PatientPayAmount, 0) 
+		when 'B2' then (RPSB2.TotalAmountPaid + ISNULL(RPSB2.PatientPayAmount, 0)) * -1 
 		else null end AS TOTAL_COST
 	, case CS.[TransactionCode] 
 		when 'B1' then RPS.IngredientCostPaid 
@@ -256,8 +251,8 @@ BEGIN
 	--					Master.ClaimSegment WHERE Name = 'PricingSegment' and ClaimTypeId = 4)
 	--	ELSE NULL END AS 'Segment Identification'
 	, CASE CS.[TransactionCode] 
-		WHEN 'B1' THEN ISNULL(RPS.PatientPayAmount, 0)
-		WHEN 'B2' THEN ISNULL(RPSB2.PatientPayAmount, 0) * -1 
+		WHEN 'B1' THEN RPS.PatientPayAmount
+		WHEN 'B2' THEN RPSB2.PatientPayAmount * -1 
 		ELSE NULL END AS 'PATIENT_PAY_AMOUNT'
 	, CASE CS.[TransactionCode] 
 		WHEN 'B1' THEN ISNULL(RPS.IngredientCostPaid, 0) 
@@ -643,7 +638,7 @@ BEGIN
 		
 	WHERE 
 		1 = 1
-		and RC.CreatedDate BETWEEN @ExportDate AND @EndDate
+		and RC.ReceivedOn >= @ExportDate AND RC.ReceivedOn < @EndDate
 	ORDER BY 
 		RC.Id, Req.DisplayOrder
 
@@ -652,5 +647,5 @@ BEGIN
 			WHEN 1 THEN 'Yes'
 			WHEN 0 THEN 'No'
 			ELSE 'Not Defined' END AS IsPrimaryReplica
-
+	
 END
