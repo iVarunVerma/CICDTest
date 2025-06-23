@@ -1,6 +1,6 @@
 USE [BuzzRxDashboard]
 GO
-/****** Object:  StoredProcedure [ETL].[Claim_Export]    Script Date: 6/23/2025 9:52:31 AM ******/
+/****** Object:  StoredProcedure [ETL].[Claim_Export]    Script Date: 6/23/2025 9:56:11 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -11,12 +11,10 @@ GO
 
 When			What
 08-MAY-2025		Included SelfAdjudication claims in this export. (SelfAdjudication = 5)
-17-JUNE-2025	Changed the @EndDate to be the start of next day to include last second of the day (BIA-447)
 
-TEST RUN:
+declare @DateValue Datetime = '2025-04-15'
 
-declare @DateValue Datetime = '18-FEB-2025'
-exec [ETL].[SmartBINClaim_Export] @ExportDate = @DateValue, @EnforceLastExec = 0
+exec [ETL].[Claim_Export] @ExportDate = @DateValue, @EnforceLastExec = 0
 
 */
 
@@ -31,9 +29,10 @@ BEGIN
 
 	SET @ExportDate = CAST(@ExportDate AS DATE)
 
-	DECLARE @EndDate AS DATETIME = @ExportDate + 1
+	DECLARE @EndDate as DATETIME = CAST(GETDATE() as Date)
+	set @EndDate = DATEADD(SECOND, -1, @ExportDate + 1)
 
-	DECLARE @BasisOfReimbursement TABLE (Id INT, Title NVARCHAR(100))
+	declare @BasisOfReimbursement table (Id int, Title nvarchar(100))
  
 	insert into @BasisOfReimbursement
 	select 0, 'Default' union all
@@ -325,7 +324,12 @@ BEGIN
 		LEFT JOIN [Claim].[ClaimRouting] CR with(nolock) on CR.RawClaimId = RC.Id
 	WHERE 
 		1 = 1
-		and RC.ReceivedOn >= @ExportDate AND RC.ReceivedOn < @EndDate
+		and RC.CreatedDate BETWEEN @ExportDate AND @EndDate
+		--and 
+		--	CASE 
+		--		WHEN CS.[TransactionCode] = 'B1' AND (CRL.Id is null or CRL.DecisionStatus = 'NO_CHANGE') THEN 1
+		--		WHEN CS.[TransactionCode] = 'B2' AND (CRLX.Id is null or CRLX.DecisionStatus = 'NO_CHANGE') THEN 1
+		--		ELSE 0 END = 1
 		and (CR.Id is null or CR.ExternalAdjudicatorId = 5)
 	ORDER BY 
 		RC.Id
