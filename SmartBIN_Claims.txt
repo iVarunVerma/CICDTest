@@ -1,0 +1,656 @@
+USE [BuzzRxDashboard]
+GO
+/****** Object:  StoredProcedure [ETL].[SmartBINClaim_Export]    Script Date: 6/17/2025 3:14:30 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+/*
+
+declare @DateValue Datetime = GETDATE() - 50
+
+exec [ETL].[SmartBINClaim_Export] @ExportDate = @DateValue, @EnforceLastExec = 0
+
+*/
+
+ALTER PROCEDURE [ETL].[SmartBINClaim_Export]
+( 
+	@ExportDate DATETIME,
+	@EnforceLastExec bit = 1
+)     
+AS  
+BEGIN
+	SET NOCOUNT ON
+	
+	IF (@EnforceLastExec = 1)
+	BEGIN
+		SELECT 
+			TOP 1 @ExportDate = CAST([StartTime] AS DATE) FROM [ETL].[ClaimExportDetails] 
+		WHERE 
+			ExportType = 'SmartBIN Claims' and [Status] = 'Completed' 
+		ORDER BY 
+			[StartTime] DESC
+	END
+
+	DECLARE @EndDate as DATETIME = cast(GETDATE() as Date)
+	set @EndDate = dateadd(second, -1, @EndDate)
+
+	declare @BasisOfReimbursement table (Id int, Title nvarchar(100))
+ 
+	insert into @BasisOfReimbursement
+	select 0, 'Default' union all
+	select 1, 'AWP' union all
+	select 2, 'Local Wholesaler' union all
+	select 3, 'Ingredient Cost Reduced to AWP Less X% Pricing' union all
+	select 4, 'Usual & Customary Paid as Submitted' union all
+	select 5, 'Acquisition' union all
+	select 6, 'MAC' union all
+	select 7, 'MAC Pricing Ingredient Cost Reduced to MAC' union all
+	select 8, '340B' union all
+	select 9, 'Other' union all
+	select 10, 'ASP' union all
+	select 11, 'AMP' union all
+	select 12, 'WAC' union all
+	select 13, 'Special Patient Pricing' union all
+	select 14, 'Cost basis on unreportable quantities' union all
+	select 15, 'Free product or no associated cost' union all
+	select 16, 'Nominal Price' union all
+	select 17, 'Federal Supply Schedule'
+
+	SELECT
+	  CS.ClaimAuthorizationNo AS CLAIM_NUMBER
+	, case CS.[TransactionCode] 
+		when 'B1' then RPS.TotalAmountPaid + RPS.PatientPayAmount 
+		when 'B2' then (RPSB2.TotalAmountPaid + RPSB2.PatientPayAmount) * -1 
+		else null end AS TOTAL_COST
+	, case CS.[TransactionCode] 
+		when 'B1' then RPS.IngredientCostPaid 
+		when 'B2' then RPSB2.IngredientCostPaid * -1 
+		else null end AS INGR_COST
+	, case CS.[TransactionCode] 
+		when 'B1' then RPS.DispensingFeePaid 
+		when 'B2' then RPSB2.DispensingFeePaid * -1 
+		else null end AS DISPFEE
+	, case CS.[TransactionCode] 
+		when 'B1' then RPS.BasisOfReimbursementDetermination 
+		when 'B2' then RPSB2.BasisOfReimbursementDetermination
+		else null end AS BASIS_OF_COST
+	--, RPS.BasisOfReimbursementDetermination AS BASIS_OF_COST
+	, case CS.[TransactionCode] 
+		when 'B1' then RPS.AmountAttributedToSalesTax 
+		when 'B2' then RPSB2.AmountAttributedToSalesTax * -1 
+		else null end AS SALES_TAX
+	, case CS.[TransactionCode] 
+		when 'B1' then RPS.AmountAttributedToProcessorFee 
+		when 'B2' then RPSB2.AmountAttributedToProcessorFee * -1 
+		else null end AS ADMINFEE
+	, case CS.[TransactionCode] 
+		when 'B1' then CPF.UsualAndCustomaryCharge 
+		when 'B2' then CPFB2.UsualAndCustomaryCharge * -1 
+		else null end AS UNC
+	, case CS.[TransactionCode] 
+		when 'B1' then RPS.BasisOfReimbursementDetermination 
+		when 'B2' then RPSB2.BasisOfReimbursementDetermination
+		else null end AS PRICE_SOURCE
+	--, RPS.BasisOfReimbursementDetermination AS PRICE_SOURCE
+	, case CS.[TransactionCode] 
+		when 'B1' then BOR.Title 
+		when 'B2' then BORB2.Title
+		else null end AS PRICE_SOURCE_DESC
+	--, BOR.Title AS PRICE_SOURCE_DESC
+	--, CST.BIN AS BIN
+	, CASE CPF.TransactionCode 
+		WHEN 'B1' THEN CST.BIN
+		WHEN 'B2' THEN CSTX.BIN
+		ELSE '' END AS BIN
+	--, CST.PCN AS PCN
+	, CASE CPF.TransactionCode 
+		WHEN 'B1' THEN CST.PCN
+		WHEN 'B2' THEN CSTX.PCN
+		ELSE '' END AS PCN
+	, CPF.CardHolderId AS MEMBER_ID
+	, CPF.PatientFirstName AS MEMBER_FIRST_NAME
+	, CPF.PatientLastName AS MEMBER_LAST_NAME
+	, CPF.DateOfService AS FILLDATE
+	, CST.CreatedDate AS ADJUDICATED_DATE
+	, CPF.ProductServiceId AS NDC
+	, CPF.PrescriptionReferenceNumber AS RX_NUMBER
+	, CPF.PrescriberIdQualifier AS PRESCRIBER_ID_QUALIFIER
+	, CPF.PrescriberId AS PRESCRIBER_ID
+	, REPS.PrescriberLastName AS PRESCRIBER_LAST_NAME
+	, case CS.[TransactionCode] 
+		when 'B1' then CPF.DaysSupply 
+		when 'B2' then CPFB2.DaysSupply * -1 
+		else null end AS DAYS_SUPPLY
+	, case CS.[TransactionCode] 
+		when 'B1' then CPF.QuantityDispensed 
+		when 'B2' then CPFB2.QuantityDispensed * -1 
+		else null end AS QTY
+	, CPF.FillNumber AS FILL_NUMBER
+	, CPF.DispenseAsWritten AS DAW
+	, case CS.[TransactionCode] 
+		when 'B1' then RPS.AmountAttributedToSalesTax 
+		when 'B2' then RPSB2.AmountAttributedToSalesTax * -1 
+		else null end AS TOTAL_SALES_TAX
+	, case CS.[TransactionCode] 
+		when 'B1' then RPS.PatientPayAmount 
+		when 'B2' then RPSB2.PatientPayAmount * -1 
+		else null end AS MEMBER_PAID
+	, DR.TcGPIName AS GENERIC_NAME
+	--, CST.[Group] AS GROUP_NUM
+	, CASE CPF.TransactionCode 
+		WHEN 'B1' THEN CST.[Group]
+		WHEN 'B2' THEN CSTX.[Group]
+		ELSE '' END AS GROUP_NUM
+	, case 
+		when CST.FlatDiscount <> 0 then cast(CST.UnitPrice + CST.FlatDiscount / CPF.QuantityDispensed as decimal(10, 5))
+		when CST.PercentDiscount <> 0 then cast(CST.UnitPrice +  (CST.UnitPrice * (CST.PercentDiscount / 100)) as decimal(10, 4))
+		else CST.UnitPrice END as TOT_AWP
+	, CPF.CompoundCode AS COMPOUND_CODE
+	, '' AS COMPOUND_TYPE
+	, '' AS COMPOUND_DOSAGE_FORM
+	, '' AS COMPOUND_DISP_UNIT_FORM
+	, CASE WHEN CS.[TransactionCode] = 'B1' AND CS.Status = 'Reversed' THEN 'P - Paid' ELSE CS.Status END AS CLAIM_TYPE
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' 
+			THEN CASE CS.Status 
+					WHEN 'R - Rejected' THEN 0
+					WHEN 'R - Rejected (92)' THEN 0
+					WHEN 'P - Paid' THEN 1				
+					WHEN 'Reversed' THEN 1
+					WHEN 'D - Duplicate of Paid' THEN 4 END
+		WHEN 'B2' 
+			THEN CASE CS.Status 
+					WHEN 'R - Rejected' THEN 0
+					WHEN 'R - Rejected (92)' THEN 0
+					WHEN 'A - Approved' THEN 2				
+					WHEN 'S - Duplicate of Approved' THEN 4 END
+		ELSE '' END AS CLAIM_STATUS
+	, CPF.ServiceProviderId AS NPI
+	, CPF.DatePrescriptionWritten AS WRITTEN_DATE
+	, isnull(RCS.PriorAuthorizationNumberSubmitted, 0) AS PRIOR_AUTH_NO
+	, DR.RouteOfAdministration AS ROUTE_OF_ADMIN
+	, CPF.DateOfBirth AS BIRTHDATE
+	, CPF.PatientGenderCode AS SEX
+	, CST.PriceBasis AS MAC_CODE
+	, DR.DEAClassCode AS NDC_DEA_CODE
+	, '' AS MAINT_IND
+	, '' AS GCN
+	, CST.NetworkName AS PHARMACY_NETWORK
+	, CST.CreatedDate AS DATE_ADDED
+	, CG.Name AS CARRIER_NAME
+	, '' AS ACCOUNT_NAME
+	, CASE CPF.TransactionCode 
+		WHEN 'B1' THEN RSS.TransactionResponseStatus 
+		WHEN 'B2' THEN RSSB2.TransactionResponseStatus 
+		ELSE '' END AS TRANSACTION_RESPONSE_STATUS
+	, CPF.TransactionCode AS TRANSACTION_CODE
+	--, CS.Status AS RESPONSE_STATUS
+	, CASE WHEN CS.[TransactionCode] = 'B1' AND CS.Status = 'Reversed' THEN 'P - Paid' ELSE CS.Status END AS RESPONSE_STATUS
+	, RIS.PersonCode AS SUBMITTED_PERSON_CODE
+	, CPF.OtherCoverageCode AS OTHER_COVERAGE_CODE
+	, CPF.ServiceProviderIdQualifier AS PROVIDER_ID_QUALIFIER
+	, PH.Name AS PROVIDER_NAME
+	, PH.State AS PROVIDER_STATE
+	, PH.Zip AS PROVIDER_ZIP
+	, REPS.PrescriberFirstName AS PRESCRIBER_FIRST_NAME
+	, CPF.ProductServiceIdQualifier AS PRODUCT_SERVICE_ID_QUALIFIER
+	, isnull(RCS.NumberOfRefillsAuthorized, 0) AS NUM_REFILLS_AUTH
+	, CASE CPF.TransactionCode 
+		WHEN 'B1' THEN RSS.RejectCode 
+		WHEN 'B2' THEN RSSB2.RejectCode
+		ELSE '' END AS REJECT_CODE_1
+	, '' AS REJECT_CODE_2
+	, '' AS REJECT_CODE_3
+	, '' AS REJECT_CODE_4
+	, '' AS REJECT_CODE_5
+	, DR.TcGPIName AS DRUG_NAME
+	, DR.RxOTCIndicatorCode AS RX_OTC
+	, DR.BrandNameCode AS BRAND_NAME_CODE
+	, 'BIA' AS PBM
+	, DR.MultiSourceCode AS PBM_BG_INDICATOR
+	, DP.UnitPrice AS AWP_UNIT
+	, PH.NCPDPProviderId AS NCPDP
+	, CPF.TransactionCode AS TRANSACTION_TYPE
+	, CSX.ClaimAuthorizationNo AS CLAIM_NUMBER_XREF
+	, CASE CS.[TransactionCode] WHEN 'B2' THEN 'true' ELSE 'false' END AS REVERSAL
+	, '' AS GSN
+	, DR.GenericProductIdentifier AS GPI
+	, '' AS SRC_FILE_DATE
+	, CPF.FillNumber AS REFILL_NUM
+	, req.KEY_MESSAGE_CODE
+	, req.CLAIM_TYPE_DESC
+	, req.ROUTER_REQUEST_MESSAGE_CODE
+	, req.ROUTER_REQUEST_CONTEXTID
+	, req.ROUTER_REQUEST_NDC
+	, req.ROUTER_REQUEST_QUANTITY
+	, req.ROUTER_REQUEST_DAYSSUPPLY
+	, req.ROUTER_REQUEST_PROVIDERIDQUAL
+	, req.ROUTER_REQUEST_PROVIDERID
+	, req.ROUTER_REQUEST_PRESCRIBERIDQUAL
+	, req.ROUTER_REQUEST_PRESCRIBERID
+	, req.ROUTER_REQUEST_UNC
+	, req.ROUTER_REQUEST_BIN
+	, req.ROUTER_REQUEST_PCN
+	, req.ROUTER_REQUEST_GROUPID
+	, req.ROUTER_REQUEST_REJECTCODE
+	, req.ROUTER_REQUEST_DATEOFSERVICE
+	, req.ROUTER_REQUEST_FILLNUMBER
+	, req.ROUTER_REQUEST_REFILLSAUTHORIZED
+	, req.ROUTER_RESPONSE_MESSAGE_CODE
+	, req.ROUTER_RESPONSE_DECISIONSTATUS
+	, req.ROUTER_RESPONSE_BIN
+	, req.ROUTER_RESPONSE_PCN
+	, req.ROUTER_RESPONSE_GROUPID
+	, req.ROUTER_RESPONSE_CARDHOLDERID
+	, req.[ROUTER_RESPONSE_PLAN ID]
+	, req.[ROUTER_RESPONSE_NETWORK REIMBURSEMENT ID]
+	, req.[EXTERNAL ADJUDICATOR]
+	, req.[OUTBOUND IP]
+	, req.[OUTBOUND PORT]
+	--, CASE CS.[TransactionCode] 
+	--	WHEN 'B1' THEN (SELECT SegmentIdentification FROM 
+	--					Master.ClaimSegment WHERE Name = 'PricingSegment' and ClaimTypeId = 2)
+	--	WHEN 'B2' THEN (SELECT SegmentIdentification FROM 
+	--					Master.ClaimSegment WHERE Name = 'PricingSegment' and ClaimTypeId = 4)
+	--	ELSE NULL END AS 'Segment Identification'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.PatientPayAmount, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.PatientPayAmount, 0) * -1 
+		ELSE NULL END AS 'PATIENT_PAY_AMOUNT'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.IngredientCostPaid, 0) 
+		WHEN 'B2' THEN ISNULL(RPSB2.IngredientCostPaid, 0) * -1 
+		ELSE NULL END AS 'INGREDIENT_COST_PAID'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.DispensingFeePaid, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.DispensingFeePaid, 0) * -1 
+		ELSE NULL END AS 'DISPENSING_FEE_PAID'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN RPS.TaxExemptIndicator 
+		WHEN 'B2' THEN RPSB2.TaxExemptIndicator
+		ELSE NULL END AS 'TAX_EXEMPT_INDICATOR'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.FlatSalesTaxAmountPaid, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.FlatSalesTaxAmountPaid, 0) * -1 
+		ELSE NULL END AS 'FLAT_SALES_TAX_AMOUNT_PAID'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.PercentageSalesTaxAmountPaid, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.PercentageSalesTaxAmountPaid, 0) * -1 
+		ELSE NULL END AS 'PERCENTAGE_SALES_TAX_AMOUNT_PAID'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN RPS.PercentageSalesTaxRatePaid 
+		WHEN 'B2' THEN RPSB2.PercentageSalesTaxRatePaid 
+		ELSE NULL END AS 'PERCENTAGE_SALES_TAX_RATE_PAID'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN RPS.PercentageSalesTaxBasisPaid 
+		WHEN 'B2' THEN RPSB2.PercentageSalesTaxBasisPaid 
+		ELSE NULL END AS 'PERCENTAGE_SALES_TAX_BASIS_PAID'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.IncentiveAmountPaid, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.IncentiveAmountPaid, 0) * -1 
+		ELSE NULL END AS 'INCENTIVE_AMOUNT_PAID'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.ProfessionalServiceFeePaid, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.ProfessionalServiceFeePaid, 0) * -1 
+		ELSE NULL END AS 'PROFESSIONAL_SERVICE_FEE_PAID'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN RPS.OtherAmountPaidCount 
+		WHEN 'B2' THEN RPSB2.OtherAmountPaidCount
+		ELSE NULL END AS 'OTHER_AMOUNT_PAID_COUNT'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN RPS.OtherAmountPaidQualifier 
+		WHEN 'B2' THEN RPSB2.OtherAmountPaidQualifier
+		ELSE NULL END AS 'OTHER_AMOUNT_PAID_QUALIFIER'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.OtherAmountPaid, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.OtherAmountPaid, 0) * -1
+		ELSE NULL END AS 'OTHER_AMOUNT_PAID'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.OtherPayerAmountRecognized, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.OtherPayerAmountRecognized, 0) * -1
+		ELSE NULL END AS 'OTHER_PAYER_AMOUNT_RECOGNIZED'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.TotalAmountPaid, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.TotalAmountPaid, 0) * -1
+		ELSE NULL END AS 'TOTAL_AMOUNT_PAID'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN RPS.BasisOfReimbursementDetermination 
+		WHEN 'B2' THEN RPSB2.BasisOfReimbursementDetermination
+		ELSE NULL END AS 'BASIS_OF_REIMBURSEMENT_DETERMINATION'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.AmountAttributedToSalesTax, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.AmountAttributedToSalesTax, 0) * -1
+		ELSE NULL END AS 'AMOUNT_ATTRIBUTED_TO_SALES_TAX'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.AccumulatedDeductibleAmount, 0) 
+		WHEN 'B2' THEN ISNULL(RPSB2.AccumulatedDeductibleAmount, 0) * -1
+		ELSE NULL END AS 'ACCUMULATED_DEDUCTIBLE_AMOUNT'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.RemainingDeductibleAmount, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.RemainingDeductibleAmount, 0) * -1
+		ELSE NULL END AS 'REMAINING_DEDUCTIBLE_AMOUNT'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.RemainingBenefitAmount, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.RemainingBenefitAmount, 0) * -1
+		ELSE NULL END AS 'REMAINING_BENEFIT_AMOUNT'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.AmountAppliedToPeriodicDeductible, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.AmountAppliedToPeriodicDeductible, 0) * -1
+		ELSE NULL END AS 'AMOUNT_APPLIED_TO_PERIODIC_DEDUCTIBLE'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.AmountOfCopay, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.AmountOfCopay, 0) * -1
+		ELSE NULL END AS 'AMOUNT_OF_COPAY'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.AmountExceedingPeriodicBenefitMaximum, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.AmountExceedingPeriodicBenefitMaximum, 0) * -1
+		ELSE NULL END AS 'AMOUNT_EXCEEDING_PERIODIC_BENEFIT_MAXIMUM'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN RPS.BasisOfCalculationDispensingFee 
+		WHEN 'B2' THEN RPSB2.BasisOfCalculationDispensingFee
+		ELSE NULL END AS 'BASIS_OF_CALCULATION_–_DISPENSING_FEE'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN RPS.BasisOfCalculationCopay 
+		WHEN 'B2' THEN RPSB2.BasisOfCalculationCopay
+		ELSE NULL END AS 'BASIS_OF_CALCULATION_–_COPAY'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN RPS.BasisOfCalculationFlatSalesTax 
+		WHEN 'B2' THEN RPSB2.BasisOfCalculationFlatSalesTax
+		ELSE NULL END AS 'BASIS_OF_CALCULATION_–_FLAT_SALES_TAX'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN RPS.BasisOfCalculationPercentageSalesTax 
+		WHEN 'B2' THEN RPSB2.BasisOfCalculationPercentageSalesTax
+		ELSE NULL END AS 'BASIS_OF_CALCULATION_–_PERCENTAGE_SALES_TAX'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.AmountAttributedToProcessorFee, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.AmountAttributedToProcessorFee, 0) * -1
+		ELSE NULL END AS 'AMOUNT_ATTRIBUTED_TO_PROCESSOR_FEE'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.PatientSalesTaxAmount, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.PatientSalesTaxAmount, 0) * -1
+		ELSE NULL END AS 'PATIENT_SALES_TAX_AMOUNT'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.PlanSalesTaxAmount, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.PlanSalesTaxAmount, 0) * -1
+		ELSE NULL END AS 'PLAN_SALES_TAX_AMOUNT'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.AmountOfCoinsurance, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.AmountOfCoinsurance, 0) * -1
+		ELSE NULL END AS 'AMOUNT_OF_COINSURANCE'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN RPS.BasisOfCalculationCoInsurance 
+		WHEN 'B2' THEN RPSB2.BasisOfCalculationCoInsurance
+		ELSE NULL END AS 'BASIS_OF_CALCULATION-COINSURANCE'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN RPS.BenefitStageCount 
+		WHEN 'B2' THEN RPSB2.BenefitStageCount
+		ELSE NULL END AS 'BENEFIT_STAGE_COUNT'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN RPS.BenefitStageQualifier 
+		WHEN 'B2' THEN RPSB2.BenefitStageQualifier
+		ELSE NULL END AS 'BENEFIT_STAGE_QUALIFIER'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.BenefitStageAmount, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.BenefitStageAmount, 0) * -1
+		ELSE NULL END AS 'BENEFIT_STAGE_AMOUNT'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.EstimatedGenericSavings, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.EstimatedGenericSavings, 0) * -1
+		ELSE NULL END AS 'ESTIMATED_GENERIC_SAVINGS'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.SpendingAccountAmountRemaining, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.SpendingAccountAmountRemaining, 0) * -1
+		ELSE NULL END AS 'SPENDING_ACCOUNT_AMOUNT_REMAINING'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.HealthPlanFundedAssistanceAmount, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.HealthPlanFundedAssistanceAmount, 0) * -1
+		ELSE NULL END AS 'HEALTH_PLAN-FUNDED_ASSISTANCE_AMOUNT'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.AmountAttributedToProviderNetworkSelection, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.AmountAttributedToProviderNetworkSelection, 0) * -1
+		ELSE NULL END AS 'AMOUNT_ATTRIBUTED_TO_PROVIDER_NETWORK_SELECTION'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.AmountAttributedToProductSelectionDrug, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.AmountAttributedToProductSelectionDrug, 0) * -1
+		ELSE NULL END AS 'AMOUNT_ATTRIBUTED_TO_PRODUCT_SELECTION/BRAND_DRUG'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.AmountAttributedToProductSelection, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.AmountAttributedToProductSelection, 0) * -1
+		ELSE NULL END AS 'AMOUNT_ATTRIBUTED_TO_PRODUCT_SELECTION/NON-PREFERRED_FORMULARY_SELECTION'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.AmountAttributedToProductSelectionNonPreferred, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.AmountAttributedToProductSelectionNonPreferred, 0) * -1
+		ELSE NULL END AS 'AMOUNT_ATTRIBUTED_TO_PRODUCT_SELECTION/BRAND_NON-PREFERRED_FORMULARY_SELECTION'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.AmountAttributedToCoverageGap, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.AmountAttributedToCoverageGap, 0) * -1
+		ELSE NULL END AS 'AMOUNT_ATTRIBUTED_TO_COVERAGE_GAP'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.IngredientCostContractedAmount, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.IngredientCostContractedAmount, 0) * -1
+		ELSE NULL END AS 'INGREDIENT_COST_CONTRACTED/REIMBURSABLE_AMOUNT'
+	, CASE CS.[TransactionCode] 
+		WHEN 'B1' THEN ISNULL(RPS.DispensingFeeContractedAmount, 0)
+		WHEN 'B2' THEN ISNULL(RPSB2.DispensingFeeContractedAmount, 0) * -1
+		ELSE NULL END AS 'DISPENSING_FEE_CONTRACTED/REIMBURSABLE_AMOUNT'
+	FROM
+		[Claim].[RawClaim] RC with(nolock)
+		INNER JOIN [Claim].[ClaimProcessingFields] CPF with(nolock) ON CPF.RawClaimId = RC.Id
+		INNER JOIN [Claim].[ClaimStamping] CST with(nolock) ON CST.RawClaimId = RC.Id
+		INNER JOIN [Claim].[ClaimStatus] CS with(nolock) ON CS.RawClaimId = RC.Id
+		INNER JOIN Claim.ClaimRouting CR with(nolock) on RC.ID = CR.RawClaimID
+		LEFT JOIN Claim.ClaimRouteLookup CRL with(nolock) on CR.RawClaimId = CRL.RawClaimID
+		LEFT JOIN [Claim].[ClaimStatus] CSX with(nolock) on CSX.RawClaimId = CST.RefRawClaimId
+		LEFT JOIN [Claim].[ClaimStamping] CSTX with(nolock) ON CSTX.RawClaimId = CSX.RawClaimId
+		LEFT JOIN [Pricing].[Drug] DR with(nolock) ON 
+			DR.NDC = CPF.ProductServiceId
+			and CPF.DateOfService between DR.ValidFrom and DR.ValidTo
+		LEFT JOIN [Pricing].[Pharmacy] PH with(nolock) ON PH.NPI = CPF.ServiceProviderId
+			and CPF.DateOfService between PH.ValidFrom and PH.ValidTo
+		LEFT JOIN [Claim].[B1ResponsePricingSegment] RPS with(nolock) on RPS.RawClaimId = RC.Id and CS.[TransactionCode] = 'B1'
+		LEFT JOIN [Claim].[B1ResponsePricingSegment] RPSB2 with(nolock) on RPSB2.RawClaimId = CSX.RawClaimId
+		LEFT JOIN [Claim].[B1RequestPrescriberSegment] REPS with(nolock) on REPS.RawClaimId = RC.Id and CS.[TransactionCode] = 'B1'
+		LEFT JOIN [Claim].[B1ResponseStatusSegment] RSS with(nolock) on RSS.RawClaimId = RC.Id and CS.[TransactionCode] = 'B1'
+		LEFT JOIN [Claim].[B2ResponseStatusSegment] RSSB2 with(nolock) on RSSB2.RawClaimId = RC.Id and CS.[TransactionCode] = 'B2'
+		LEFT JOIN [Claim].[B1RequestInsuranceSegment] RIS with(nolock) on RIS.RawClaimId = RC.Id and CS.[TransactionCode] = 'B1'
+		LEFT JOIN [Claim].B1RequestClaimSegment RCS with(nolock) ON RCS.RawClaimId = RC.Id and CS.[TransactionCode] = 'B1'
+		LEFT JOIN [Pricing].[Client] CLT with(nolock) on CLT.Id = CST.ClientId
+			and CPF.DateOfService between CLT.ValidFrom and CLT.ValidTo
+		LEFT JOIN [Pricing].[ClientGroup] CG with(nolock) on CG.Id = CLT.ClientGroupId
+		LEFT JOIN [Pricing].[DrugPrice] DP with(nolock) ON DP.NDC = CPF.ProductServiceId AND DP.PriceBasisId = 1
+			and CPF.DateOfService between DP.ValidFrom and DP.ValidTo
+		LEFT JOIN @BasisOfReimbursement BOR on BOR.Id = RPS.BasisOfReimbursementDetermination
+		LEFT JOIN @BasisOfReimbursement BORB2 on BORB2.Id = RPSB2.BasisOfReimbursementDetermination
+		LEFT JOIN [Claim].[ClaimProcessingFields] CPFB2 with(nolock) ON CPFB2.RawClaimId = CSX.RawClaimId
+		OUTER APPLY
+		(
+			SELECT * FROM
+			(
+				SELECT 
+					RCI.ID as RawClaimId,
+					RCI.ClaimId as KEY_MESSAGE_CODE,
+					'ORIGINAL REQUEST' as CLAIM_TYPE_DESC,
+					'' AS ROUTER_REQUEST_MESSAGE_CODE,
+					'' AS ROUTER_REQUEST_CONTEXTID,
+					'' AS ROUTER_REQUEST_NDC,
+					'' AS ROUTER_REQUEST_QUANTITY,
+					'' AS ROUTER_REQUEST_DAYSSUPPLY,
+					'' AS ROUTER_REQUEST_PROVIDERIDQUAL,
+					'' AS ROUTER_REQUEST_PROVIDERID,
+					'' AS ROUTER_REQUEST_PRESCRIBERIDQUAL,
+					'' AS ROUTER_REQUEST_PRESCRIBERID,
+					'' AS ROUTER_REQUEST_UNC,
+					'' AS ROUTER_REQUEST_BIN,
+					'' AS ROUTER_REQUEST_PCN,
+					'' AS ROUTER_REQUEST_GROUPID,
+					'' AS ROUTER_REQUEST_REJECTCODE,
+					'' AS ROUTER_REQUEST_DATEOFSERVICE,
+					'' AS ROUTER_REQUEST_FILLNUMBER,
+					'' AS ROUTER_REQUEST_REFILLSAUTHORIZED,
+					'' AS ROUTER_RESPONSE_MESSAGE_CODE,
+					'' AS ROUTER_RESPONSE_DECISIONSTATUS,
+					'' AS ROUTER_RESPONSE_BIN,
+					'' AS ROUTER_RESPONSE_PCN,
+					'' AS ROUTER_RESPONSE_GROUPID,
+					'' AS ROUTER_RESPONSE_CARDHOLDERID,
+					'' AS [ROUTER_RESPONSE_PLAN ID],
+					'' AS [ROUTER_RESPONSE_NETWORK REIMBURSEMENT ID],
+					'' AS [EXTERNAL ADJUDICATOR],
+					'' AS [OUTBOUND IP],
+					'' AS [OUTBOUND PORT],
+					1 AS DisplayOrder
+				FROM 
+						 Claim.RawClaim RCI with(nolock)
+					JOIN Claim.ClaimRouting CR with(nolock) ON RCI.ID = CR.RawClaimID
+					LEFT JOIN Claim.ClaimRouteLookup CRL with(nolock) ON CRL.RawClaimID = CR.RawClaimId
+				WHERE 1 = 1
+					AND RCI.Id = RC.Id
+				
+				UNION ALL
+				
+				select 
+					CRL.RawClaimId,
+					RCI.ClaimId KEY_MESSAGE_CODE,
+					'ROUTED REQUEST' CLAIM_TYPE_DESC,
+					JSON_VALUE(CRL.RequestPayload, '$.messageCode') ROUTER_REQUEST_MESSAGE_CODE,
+					JSON_VALUE(CRL.RequestPayload, '$.contextId') ROUTER_REQUEST_CONTEXTID,
+					JSON_VALUE(CRL.RequestPayload, '$.ndc') ROUTER_REQUEST_NDC,
+					JSON_VALUE(CRL.RequestPayload, '$.quantity') ROUTER_REQUEST_QUANTITY,
+					JSON_VALUE(CRL.RequestPayload, '$.daysSupply') ROUTER_REQUEST_DAYSSUPPLY,
+					JSON_VALUE(CRL.RequestPayload, '$.providerIdQual') ROUTER_REQUEST_PROVIDERIDQUAL,
+					JSON_VALUE(CRL.RequestPayload, '$.providerId') ROUTER_REQUEST_PROVIDERID,
+					JSON_VALUE(CRL.RequestPayload, '$.prescriberIdQual') ROUTER_REQUEST_PRESCRIBERIDQUAL,
+					JSON_VALUE(CRL.RequestPayload, '$.prescriberId') ROUTER_REQUEST_PRESCRIBERID,
+					JSON_VALUE(CRL.RequestPayload, '$.unc') ROUTER_REQUEST_UNC,
+					JSON_VALUE(CRL.RequestPayload, '$.bin') ROUTER_REQUEST_BIN,
+					JSON_VALUE(CRL.RequestPayload, '$.pcn') ROUTER_REQUEST_PCN,
+					JSON_VALUE(CRL.RequestPayload, '$.groupId') ROUTER_REQUEST_GROUPID,
+					'' as ROUTER_REQUEST_REJECTCODE,
+					JSON_VALUE(CRL.RequestPayload, '$.dateOfService') ROUTER_REQUEST_DATEOFSERVICE,
+					CPF.FillNumber AS ROUTER_REQUEST_FILLNUMBER,
+					'' AS ROUTER_REQUEST_REFILLSAUTHORIZED,
+					'' AS ROUTER_RESPONSE_MESSAGE_CODE,
+					'' AS ROUTER_RESPONSE_DECISIONSTATUS,
+					'' AS ROUTER_RESPONSE_BIN,
+					'' AS ROUTER_RESPONSE_PCN,
+					'' AS ROUTER_RESPONSE_GROUPID,
+					'' AS ROUTER_RESPONSE_CARDHOLDERID,
+					'' AS [ROUTER_RESPONSE_PLAN ID],
+					'' AS [ROUTER_RESPONSE_NETWORK REIMBURSEMENT ID],
+					'' AS [EXTERNAL ADJUDICATOR],
+					'' AS [OUTBOUND IP],
+					'' AS [OUTBOUND PORT],
+					2 AS DisplayOrder
+				FROM 
+					Claim.RawClaim RCI with(nolock)
+					JOIN Claim.ClaimRouting CR with(nolock) ON RCI.ID = CR.RawClaimID 
+					LEFT JOIN Claim.ClaimRouteLookup CRL with(nolock) ON CR.RawClaimId = CRL.RawClaimID
+				WHERE
+						1 = 1
+					AND CR.RawClaimId = RC.Id
+
+				UNION ALL
+
+				SELECT 
+					CRL.RawClaimId,
+					RCI.ClaimId KEY_MESSAGE_CODE,
+					'EXTERNAL ADJUDICATOR RESPONSE' as CLAIM_TYPE_DESC,
+					'' AS ROUTER_REQUEST_MESSAGE_CODE,
+					'' AS ContextId,
+					'' AS NDC,
+					'' AS Quantity,
+					'' AS DaysSupply,
+					'' AS ProviderIdQual,
+					'' AS ProviderId,
+					'' AS PrescriberIdQual,
+					'' AS PrescriberId,
+					'' AS UNC,
+					'' AS BIN,
+					'' AS PCN,
+					'' AS GroupId,
+					'' AS ROUTER_REQUEST_REJECTCODE,
+					'' AS DateOfService,
+					'' AS ROUTER_REQUEST_FILLNUMBER,
+					'' AS ROUTER_REQUEST_REFILLSAUTHORIZED,
+					JSON_VALUE(CRL.ResponsePayload, '$.messageCode') as ROUTER_RESPONSE_MESSAGE_CODE,
+					JSON_VALUE(CRL.ResponsePayload, '$.decisionStatus') ROUTER_RESPONSE_DECISIONSTATUS,	
+					JSON_VALUE(CRL.ResponsePayload, '$.bin') ROUTER_RESPONSE_BIN,
+					JSON_VALUE(CRL.ResponsePayload, '$.pcn') ROUTER_RESPONSE_PCN,
+					JSON_VALUE(CRL.ResponsePayload, '$.groupId') ROUTER_RESPONSE_GROUPID,
+					JSON_VALUE(CRL.ResponsePayload, '$.cardholderId') ROUTER_RESPONSE_CARDHOLDERID,
+					JSON_VALUE(CRL.ResponsePayload, '$.planId') [ROUTER_RESPONSE_PLAN ID],
+					JSON_VALUE(CRL.ResponsePayload, '$.networkReimbursementId') [ROUTER_RESPONSE_NETWORK REIMBURSEMENT ID],
+					EA.Name AS [EXTERNAL ADJUDICATOR],
+					CR.OutboundIP AS [OUTBOUND IP],
+					CR.OutboundPort AS [OUTBOUND PORT],
+					3 AS DisplayOrder
+				FROM 
+						 Claim.RawClaim RCI with(nolock)
+					JOIN Claim.ClaimRouting CR with(nolock) ON RCI.ID = CR.RawClaimID
+					LEFT JOIN Claim.ClaimRouteLookup CRL with(nolock) ON CRL.RawClaimId = CR.RawClaimId
+					JOIN [Master].[ExternalAdjudicator] EA with(nolock) ON EA.Id = CR.ExternalAdjudicatorId
+				where 
+						1 = 1
+					AND CR.RawClaimId = RC.Id
+
+				union all
+
+				select 
+					RCI.ID as RawClaimId,
+					RCI.ClaimId as KEY_MESSAGE_CODE,
+					'FINAL RESPONSE' AS CLAIM_TYPE_DESC,
+					'' AS ROUTER_REQUEST_MESSAGE_CODE,
+					'' AS ROUTER_REQUEST_CONTEXTID,
+					'' AS ROUTER_REQUEST_NDC,
+					'' AS ROUTER_REQUEST_QUANTITY,
+					'' AS ROUTER_REQUEST_DAYSSUPPLY,
+					'' AS ROUTER_REQUEST_PROVIDERIDQUAL,
+					'' AS ROUTER_REQUEST_PROVIDERID,
+					'' AS ROUTER_REQUEST_PRESCRIBERIDQUAL,
+					'' AS ROUTER_REQUEST_PRESCRIBERID,
+					'' AS ROUTER_REQUEST_UNC,
+					'' AS ROUTER_REQUEST_BIN,
+					'' AS ROUTER_REQUEST_PCN,
+					'' AS ROUTER_REQUEST_GROUPID,
+					'' AS ROUTER_REQUEST_REJECTCODE,
+					'' AS ROUTER_REQUEST_DATEOFSERVICE,
+					'' AS ROUTER_REQUEST_FILLNUMBER,
+					'' AS ROUTER_REQUEST_REFILLSAUTHORIZED,
+					'' AS ROUTER_RESPONSE_MESSAGE_CODE,
+					'' AS ROUTER_RESPONSE_DECISIONSTATUS,
+					'' AS ROUTER_RESPONSE_BIN,
+					'' AS ROUTER_RESPONSE_PCN,
+					'' AS ROUTER_RESPONSE_GROUPID,
+					'' AS ROUTER_RESPONSE_CARDHOLDERID,
+					'' AS [ROUTER_RESPONSE_PLAN ID],
+					'' AS [ROUTER_RESPONSE_NETWORK REIMBURSEMENT ID],
+					'' AS [EXTERNAL ADJUDICATOR],
+					'' AS [OUTBOUND IP],
+					'' AS [OUTBOUND PORT],
+					4 AS DisplayOrder
+				FROM 
+						 Claim.RawClaim RCI with(nolock)
+					JOIN [Claim].[ClaimRouting] CR with(nolock) ON RCI.ID = CR.RawClaimID
+					LEFT JOIN Claim.ClaimRouteLookup CRL with(nolock) ON CR.RawClaimID = CRL.RawClaimID
+				WHERE 
+						1 = 1
+					AND RCI.Id = RC.Id
+			) r
+		
+		) AS Req
+		
+	WHERE 
+		1 = 1
+		and RC.CreatedDate BETWEEN @ExportDate AND @EndDate
+	ORDER BY 
+		RC.Id, Req.DisplayOrder
+
+	SELECT @@SERVERNAME AS ServerName, 
+		CASE sys.fn_hadr_is_primary_replica(DB_NAME())
+			WHEN 1 THEN 'Yes'
+			WHEN 0 THEN 'No'
+			ELSE 'Not Defined' END AS IsPrimaryReplica
+
+END
