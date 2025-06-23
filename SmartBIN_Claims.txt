@@ -1,6 +1,6 @@
 USE [BuzzRxDashboard]
 GO
-/****** Object:  StoredProcedure [ETL].[SmartBINClaim_Export]    Script Date: 6/23/2025 9:53:20 AM ******/
+/****** Object:  StoredProcedure [ETL].[SmartBINClaim_Export]    Script Date: 6/23/2025 9:56:20 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -8,12 +8,8 @@ GO
 
 /*
 
-When			What
-17-JUNE-2025	Changed the @EndDate to be the start of next day to include last second of the day (BIA-447)
+declare @DateValue Datetime = GETDATE() - 50
 
-TEST RUN:
-
-declare @DateValue Datetime = '18-FEB-2025'
 exec [ETL].[SmartBINClaim_Export] @ExportDate = @DateValue, @EnforceLastExec = 0
 
 */
@@ -26,12 +22,22 @@ ALTER PROCEDURE [ETL].[SmartBINClaim_Export]
 AS  
 BEGIN
 	SET NOCOUNT ON
-
-	SET @ExportDate = CAST(@ExportDate AS DATE)
 	
-	DECLARE @EndDate as DATETIME = @ExportDate + 1
+	
+	IF (@EnforceLastExec = 1)
+	BEGIN
+		SELECT 
+			TOP 1 @ExportDate = CAST([StartTime] AS DATE) FROM [ETL].[ClaimExportDetails] 
+		WHERE 
+			ExportType = 'SmartBIN Claims' and [Status] = 'Completed' 
+		ORDER BY 
+			[StartTime] DESC
+	END
 
-	DECLARE @BasisOfReimbursement TABLE (Id INT, Title NVARCHAR(100))
+	DECLARE @EndDate as DATETIME = cast(GETDATE() as Date)
+	set @EndDate = dateadd(second, -1, @EndDate)
+
+	declare @BasisOfReimbursement table (Id int, Title nvarchar(100))
  
 	insert into @BasisOfReimbursement
 	select 0, 'Default' union all
@@ -638,7 +644,7 @@ BEGIN
 		
 	WHERE 
 		1 = 1
-		and RC.ReceivedOn >= @ExportDate AND RC.ReceivedOn < @EndDate
+		and RC.CreatedDate BETWEEN @ExportDate AND @EndDate
 	ORDER BY 
 		RC.Id, Req.DisplayOrder
 
