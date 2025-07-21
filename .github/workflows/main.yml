@@ -63,4 +63,11 @@ jobs:
 
           foreach ($s in $servers) {
               Write-Host "Service: $($s.Name) on $($s.Server)"
+
+              $instances = ${{ vars.INSTANCES }} | ConvertFrom-Json
+
+              foreach ($i in $instances) {
+                Write-Host "ServiceName: $($i.ServiceName), $($i.DisplayName) and $($i.ServiceDescription) - $($i.ExePath)"
+              }
+
           }
