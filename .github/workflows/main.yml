@@ -59,7 +59,7 @@ jobs:
         shell: pwsh
         run: |
           # Convert JSON string to object array
-          $servers = $env:SERVERS | ConvertFrom-Json
+          $servers = $vars:SERVERS | ConvertFrom-Json
 
           foreach ($s in $servers) {
               Write-Host "Service: $($s.Name) on $($s.Server)"
