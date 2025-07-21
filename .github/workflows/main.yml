@@ -54,3 +54,13 @@ jobs:
       
       - name: Repo variable
         run: echo " Job name repo var ${{ vars.JOB_NAME }}"
+
+      - name: Servers
+        shell: pwsh
+        run: |
+          # Convert JSON string to object array
+          $servers = $env:SERVERS | ConvertFrom-Json
+
+          foreach ($s in $servers) {
+              Write-Host "Service: $($s.Name) on $($s.Server)"
+          }

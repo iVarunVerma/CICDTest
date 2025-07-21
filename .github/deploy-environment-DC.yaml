@@ -1,0 +1,170 @@
+name: Deploy Environment
+
+on:
+  push:
+    branches:
+      - development22
+      - staging
+  workflow_dispatch:
+    inputs:  
+      environment:  
+        type: environment  
+        description: 'Environment to use'  
+        default: 'development'  
+        required: true  
+      branch:  
+        type: choice  
+        description: 'Branch to use'  
+        required: true  
+        default: 'staging'  
+        options:
+          - development  
+          - staging  
+          - main  
+      branch_override:  
+        type: string  
+        description: 'option to deploy a specific tag, branch, or feature'
+        default: ''
+
+jobs:
+
+  deploy-dev:
+    runs-on: bia-dev-runner
+    if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'development') || github.ref_name == 'development' }}
+
+    environment:
+      name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name }}
+
+    steps:
+      - name: Debug - Pre Checkout
+        if: ${{ always() }}
+        shell: powershell
+        run: git version; whoami;
+    
+      - name: Default - Checkout Repository
+        if: ${{ github.event_name != 'workflow_dispatch' }}
+        uses: actions/checkout@v4
+
+      - name: Manual - Checkout Repository
+        if: ${{ (github.event_name == 'workflow_dispatch') && (github.event.inputs.branch_override == '') }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+      
+      - name: Manual - Checkout Repository w/ Branch Override
+        if: ${{ (github.event_name == 'workflow_dispatch') && (github.event.inputs.branch_override != '') }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch_override }}
+
+      - name: Debug - Dump GitHub context
+        if: ${{ !always() }}
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: echo "$GITHUB_CONTEXT"
+
+      - name: Pre Deploy
+        shell: powershell
+        run: .\Scripts\pre_deploy.ps1
+
+      - name: Backup Previous Deployment, Release New Code
+        run: .\Scripts\deploy.ps1 -RunAsAdmin -RunnerWorkSpaceLocation ${{ github.workspace }} -ProcessName "BuzzRxSmartBINClaimExport-CD1" -ProjectFileName "BuzzRxSmartBINClaimExport.csproj" -BuildLocation "bin\Release\net8.0" -DeployDriveLatter ${{ vars.DEPLOY_LETTER_DRIVE }} -TempLocation ${{ vars.TEMP_LOCATION }} -$BackupLocation ${{ vars.BACKUP_LOCATION }} -LogLocation ${{ vars.LOG_LOCATION }} -MachineName ${{ vars.SCHEDULER_MACHINE_NAME }} -Auther ${{ vars.SCHEDULER_TASK_AUTHOR }} -UserID ${{ vars.SCHEDULER_TASK_USERID }}
+        shell: powershell
+
+      - name: Post Deploy
+        shell: powershell
+        run: .\Scripts\post_deploy.ps1
+
+  deploy-staging:
+    runs-on: bia-stage-runner
+    if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging') || github.ref_name == 'staging' }}
+
+    environment:
+      name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name }}
+
+    steps:
+      - name: Debug - Pre Checkout
+        if: ${{ always() }}
+        shell: powershell
+        run: git version; whoami;  
+    
+      - name: Default - Checkout Repository
+        if: ${{ github.event_name != 'workflow_dispatch' }}
+        uses: actions/checkout@v4
+
+      - name: Manual - Checkout Repository
+        if: ${{ (github.event_name == 'workflow_dispatch') && (github.event.inputs.branch_override == '') }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+      
+      - name: Manual - Checkout Repository w/ Branch Override
+        if: ${{ (github.event_name == 'workflow_dispatch') && (github.event.inputs.branch_override != '') }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch_override }}
+
+      - name: Debug - Dump GitHub context
+        if: ${{ !always() }}
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: echo "$GITHUB_CONTEXT"
+
+      - name: Pre Deploy
+        shell: powershell
+        run: .\Scripts\pre_deploy.ps1
+
+      - name: Backup Previous Deployment, Release New Code
+        run: .\Scripts\deploy.ps1 -RunAsAdmin -RunnerWorkSpaceLocation ${{ github.workspace }} -ProcessName "BuzzRxSmartBINClaimExport-CD1" -ProjectFileName "BuzzRxSmartBINClaimExport.csproj" -BuildLocation "bin\Release\net8.0" -DeployDriveLatter ${{ vars.DEPLOY_LETTER_DRIVE }} -TempLocation ${{ vars.TEMP_LOCATION }} -$BackupLocation ${{ vars.BACKUP_LOCATION }} -LogLocation ${{ vars.LOG_LOCATION }} -MachineName ${{ vars.SCHEDULER_MACHINE_NAME }} -Auther ${{ vars.SCHEDULER_TASK_AUTHOR }} -UserID ${{ vars.SCHEDULER_TASK_USERID }}
+        shell: powershell
+
+      - name: Post Deploy
+        shell: powershell
+        run: .\Scripts\post_deploy.ps1
+
+  deploy-production:
+    runs-on: bia-prod-runner
+    if: ${{github.ref_name == 'main' && github.event_name == 'workflow_dispatch' }}
+
+    environment:
+      name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name }}
+
+    steps:
+      - name: Debug - Pre Checkout
+        if: ${{ always() }}
+        shell: powershell
+        run: git version; whoami;  
+    
+      - name: Default - Checkout Repository
+        if: ${{ github.event_name != 'workflow_dispatch' }}
+        uses: actions/checkout@v4
+
+      - name: Manual - Checkout Repository
+        if: ${{ (github.event_name == 'workflow_dispatch') && (github.event.inputs.branch_override == '') }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+      
+      - name: Manual - Checkout Repository w/ Branch Override
+        if: ${{ (github.event_name == 'workflow_dispatch') && (github.event.inputs.branch_override != '') }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch_override }}
+
+      - name: Debug - Dump GitHub context
+        if: ${{ !always() }}
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: echo "$GITHUB_CONTEXT"
+
+      - name: Pre Deploy
+        shell: powershell
+        run: .\Scripts\pre_deploy.ps1
+
+      - name: Backup Previous Deployment, Release New Code
+        run: .\Scripts\deploy.ps1 -RunAsAdmin -RunnerWorkSpaceLocation ${{ github.workspace }} -ProcessName "BuzzRxSmartBINClaimExport-CD1" -ProjectFileName "BuzzRxSmartBINClaimExport.csproj" -BuildLocation "bin\Release\net8.0" -DeployDriveLatter ${{ vars.DEPLOY_LETTER_DRIVE }} -TempLocation ${{ vars.TEMP_LOCATION }} -$BackupLocation ${{ vars.BACKUP_LOCATION }} -LogLocation ${{ vars.LOG_LOCATION }} -MachineName ${{ vars.SCHEDULER_MACHINE_NAME }} -Auther ${{ vars.SCHEDULER_TASK_AUTHOR }} -UserID ${{ vars.SCHEDULER_TASK_USERID }}
+        shell: powershell
+
+      - name: Post Deploy
+        shell: powershell
+        run: .\Scripts\post_deploy.ps1 

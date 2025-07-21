@@ -1,0 +1,62 @@
+name: Deploy API in IIS Server
+
+on:
+  push:
+    branches:
+      - develop2
+  workflow_dispatch:
+    inputs:  
+      environment:  
+        type: environment  
+        description: 'Environment to use'  
+        default: 'develop'  
+        required: true  
+      branch:  
+        type: choice  
+        description: 'Branch to use'  
+        required: true  
+        default: 'develop'  
+        options:
+          - develop  
+          - staging  
+          - master  
+      branch_override:  
+        type: string  
+        description: 'option to deploy a specific tag, branch, or feature'
+        default: ''
+
+jobs:
+  clone-repo:
+    runs-on: bia-dev-runner
+
+    environment:
+      name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name }}
+
+    steps:
+      - name: Default - Checkout Repository
+        if: ${{ github.event_name != 'workflow_dispatch' }}
+        uses: actions/checkout@v4
+
+      - name: Manual - Checkout Repository
+        if: ${{ (github.event_name == 'workflow_dispatch') && (github.event.inputs.branch_override == '') }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+      
+      - name: Manual - Checkout Repository w/ Branch Override
+        if: ${{ (github.event_name == 'workflow_dispatch') && (github.event.inputs.branch_override != '') }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch_override }}
+
+      - name: Create Application Pool is not exists
+        run: .\Scripts\manage-app-pool.ps1 -RunAsAdmin -AppPoolName "BuzzRxClaim-CD"
+        shell: powershell
+
+      - name: Create Website in IIS if not exists
+        run: .\Scripts\manage-website.ps1 -RunAsAdmin -SiteName "BuzzRxClaim-CD" -AppPoolName "BuzzRxClaim-CD" -DeployPath "D:\BuzzRxAPI\BuzzRxClaim-CD" -HostName "bia-claim-dev.buzzintegrations.com" -IPAddress "*" -Port "80"
+        shell: powershell
+      
+      - name: Backup Previous Deployment, Build Code, Release New Code
+        run: .\Scripts\deploy-API.ps1 -RunAsAdmin -RunnerWorkSpaceLocation ${{ github.workspace }} -ProcessName "BuzzRxClaim-CD" -ProjectFileName "BuzzRxClaim.API.csproj" -BuildLocation "Publish" -DeployDriveLatter ${{ vars.DEPLOY_LETTER_DRIVE }} -TempLocation ${{ vars.TEMP_LOCATION }} -$BackupLocation ${{ vars.BACKUP_LOCATION }} -LogLocation ${{ vars.LOG_LOCATION }} -MachineName ${{ vars.SCHEDULER_MACHINE_NAME }} -Auther ${{ vars.SCHEDULER_TASK_AUTHOR }} -UserID ${{ vars.SCHEDULER_TASK_USERID }}
+        shell: powershell
