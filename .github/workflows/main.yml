@@ -72,12 +72,14 @@ jobs:
 
           }
 
-      - name: Create Website in IIS if not exists
-        run: dir
+      - name: Servers
         shell: pwsh
-      
-      - name: Create Website in IIS if not exists
-        run: ..\..\Scripts\deploy-v1.ps1 -Instances ${{ vars.IISINSTANCE }}
-        shell: pwsh
+        run: |
+          # Convert JSON string to object array
+          $servers = ${{ vars.IISINSTANCE }} | ConvertFrom-Json
+
+          foreach ($s in $servers) {
+              Write-Host "PoolName: $($s.PoolName) - SiteName: $($s.SiteName)  - DeployFolder: $($s.DeployFolder) - BackupFolder: $($s.BackupFolder)"
+          }
 
       
