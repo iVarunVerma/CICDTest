@@ -72,7 +72,7 @@ jobs:
 
           }
 
-      - name: Servers
+      - name: Instances
         shell: pwsh
         run: |
           # Convert JSON string to object array
@@ -80,6 +80,11 @@ jobs:
 
           foreach ($s in $servers) {
               Write-Host "PoolName: $($s.PoolName) - SiteName: $($s.SiteName)  - DeployFolder: $($s.DeployFolder) - BackupFolder: $($s.BackupFolder)"
+
+              $instance = $($s.PoolName)
+
+              Write-Host "One Copy"
+              Write-Host $instance
           }
 
       
