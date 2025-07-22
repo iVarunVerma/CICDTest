@@ -73,5 +73,9 @@ jobs:
           }
 
       - name: Create Website in IIS if not exists
-        run: ..\Scripts\deploy-v1.ps1 -Instances ${{ vars.IISINSTANCE }}
+        run: .\Scripts\deploy-v1.ps1 -Instances ${{ vars.IISINSTANCE }}
+        shell: pwsh
+
+      - name: Create Website in IIS if not exists
+        run: dir
         shell: pwsh
