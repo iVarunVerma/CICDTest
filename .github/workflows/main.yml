@@ -86,5 +86,12 @@ jobs:
               Write-Host "One Copy"
               Write-Host $instance
           }
+      - name: Formatted Print
+        run: |
+          Write-Host 'Normal text'
+          Write-Output "::notice title=Deploy Message::Deployment started for MyService"
+          Write-Output "::warning title=Deploy Warning::Some optional components were skipped."
+          Write-Output "::error title=Deploy Failed::Failed to copy files due to locked DLLs."
+          
 
       
