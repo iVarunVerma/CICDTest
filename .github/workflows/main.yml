@@ -87,6 +87,7 @@ jobs:
               Write-Host $instance
           }
       - name: Formatted Print
+        shell: pwsh
         run: |
           Write-Host "Normal text"
           Write-Output "::notice title=Deploy Message::Deployment started for MyService"
